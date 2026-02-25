@@ -1,0 +1,79 @@
+Install PostgreSQL
+Update packages
+sudo apt update
+Install PostgreSQL
+sudo apt install postgresql postgresql-contrib -y
+Check status
+sudo systemctl status postgresql
+
+Enable on boot:
+sudo systemctl enable postgresql
+
+Switch to postgres system user:
+sudo -i -u postgres
+
+Open psql:
+psql
+
+Exit:
+\q
+
+Create User (Role)
+Create user with password:
+CREATE ROLE myapp_user WITH LOGIN PASSWORD 'StrongPassword123!';
+CREATE USER myapp_user WITH PASSWORD 'StrongPassword123!';
+
+Create Database
+CREATE DATABASE myapp_db;
+
+Assign owner while creating:
+CREATE DATABASE myapp_db OWNER myapp_user;
+
+
+Grant Permissions
+Connect to database:
+\c myapp_db
+Grant all privileges:
+GRANT ALL PRIVILEGES ON DATABASE myapp_db TO myapp_user;
+Grant schema permissions (IMPORTANT in PostgreSQL):
+GRANT ALL ON SCHEMA public TO myapp_user;
+Grant table permissions:
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO myapp_user;
+Grant future table permissions (very important for production):
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT ALL ON TABLES TO myapp_user;
+
+Clear / Drop Commands
+Clear screen in psql
+\! clear
+
+Cancel query:
+Ctrl + C
+
+Clear table (delete all rows)
+TRUNCATE TABLE table_name RESTART IDENTITY;
+OR
+DELETE FROM table_name;
+
+Drop database
+⚠ Must not be connected to it.
+Switch first:
+\c postgres
+Then:
+DROP DATABASE myapp_db;
+Drop user (role)
+DROP ROLE myapp_user;
+
+If role owns objects:
+DROP ROLE myapp_user CASCADE;
+Reset entire schema (Dev environment reset)
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+
+For application DB user:
+CREATE ROLE app_user WITH LOGIN PASSWORD 'StrongPassword123!';
+CREATE DATABASE app_db OWNER app_user;
+
+To create superuser:
+CREATE ROLE admin_user WITH SUPERUSER LOGIN PASSWORD 'AdminPass!';
