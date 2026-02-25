@@ -1,0 +1,41 @@
+Intallation
+sudo apt update
+sudo apt install mysql-server -y
+sudo systemctl status mysql
+sudo systemctl enable mysql
+
+Database
+CREATE DATABASE myapp_db;
+SHOW DATABASES;
+
+Create User
+CREATE USER 'myapp_user'@'localhost' IDENTIFIED BY 'StrongPassword123!';
+CREATE USER 'myapp_user'@'%' IDENTIFIED BY 'StrongPassword123!';
+
+Privileges
+GRANT ALL PRIVILEGES ON myapp_db.* TO 'myapp_user'@'localhost';
+GRANT ALL PRIVILEGES ON myapp_db.* TO 'myapp_user'@'%';
+FLUSH PRIVILEGES;
+
+Verification
+SHOW GRANTS FOR 'myapp_user'@'localhost';
+
+Specific privileges
+GRANT SELECT, INSERT, UPDATE, DELETE ON myapp_db.* TO 'myapp_user'@'localhost';
+
+EXIT;
+
+Mysql space
+system clear;
+\! clear
+
+Clear table
+TRUNCATE TABLE table_name;
+DELETE FROM table_name;
+
+Clear Database
+DROP DATABASE database_name;
+
+Clear user
+DROP USER 'username'@'localhost';
+FLUSH PRIVILEGES;
