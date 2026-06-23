@@ -1,0 +1,16 @@
+sudo apt update
+sudo apt install nodejs npm -y
+npm install -g snyk
+snyk --version
+
+snyk auth
+snyk test
+snyk fix
+snyk container test nginx:latest
+snyk iac test k8s.yaml
+
+
+snyk test --all-projects
+snyk monitor
+snyk code test
+snyk iac test
