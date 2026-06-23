@@ -1,6 +1,6 @@
 sudo apt update
 sudo apt install nodejs npm -y
-npm install -g snyk
+sudo npm install -g snyk
 snyk --version
 
 snyk auth
