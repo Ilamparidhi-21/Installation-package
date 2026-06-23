@@ -1,0 +1,183 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION   = 'ap-south-1'
+        AWS_ACCOUNT  = '445363793940'
+        ECR_REPO     = 'cms-service'
+        ECR_REGISTRY = "${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+        REPO_URL     = 'https://github.com/Ilamparidhi-21/pothys-backend.git'
+        K8S_DIR      = 'pothys-backend/apps/cms-service/k8s'
+        NAMESPACE    = 'staging'
+
+        IMAGE_TAG    = "${BUILD_NUMBER}"
+        IMAGE_URI    = "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                sh '''
+                rm -rf pothys-backend
+                git clone ${REPO_URL}
+                cd pothys-backend
+                git log -1 --oneline
+                '''
+            }
+        }
+
+        // ---------------- SNYK ----------------
+        stage('Snyk Security Scan') {
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+                        sh '''
+                        cd pothys-backend
+                        mkdir -p reports
+
+                        echo "Authenticating Snyk..."
+                        snyk auth $SNYK_TOKEN
+
+                        echo "Running dependency scan..."
+                        snyk test \
+                          --all-projects \
+                          --severity-threshold=high \
+                          --json > reports/snyk-deps.json || true
+
+                        echo "Running code scan..."
+                        snyk code test \
+                          --severity-threshold=high \
+                          --json > reports/snyk-code.json || true
+
+                        echo "Sending results to Snyk dashboard..."
+                        snyk monitor --all-projects 
+
+                        ls -lh reports
+                        '''
+                    }
+                }
+            }
+        }
+
+        // ---------------- AWS LOGIN ----------------
+        stage('ECR Login') {
+            steps {
+                sh '''
+                aws ecr get-login-password --region ${AWS_REGION} | \
+                docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                '''
+            }
+        }
+
+        // ---------------- BUILD IMAGE ----------------
+        stage('Build CMS Image') {
+            steps {
+                sh '''
+                cd pothys-backend
+
+                docker build \
+                  -f apps/cms-service/Dockerfile \
+                  -t ${IMAGE_URI} \
+                  .
+                '''
+            }
+        }
+
+        // ---------------- PUSH IMAGE ----------------
+        stage('Push CMS Image') {
+            steps {
+                sh '''
+                docker push ${IMAGE_URI}
+                '''
+            }
+        }
+
+        // ---------------- KUBERNETES ----------------
+        stage('Create Namespace') {
+            steps {
+                sh '''
+                kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                '''
+            }
+        }
+
+        stage('Create / Update CMS Secret') {
+            steps {
+                sh '''
+                kubectl create secret generic cms-service-secret \
+                  -n ${NAMESPACE} \
+                  --from-literal=COMPLIANCE_SERVICE_DB_HOST=postgres \
+                  --from-literal=COMPLIANCE_SERVICE_DB_PORT=5432 \
+                  --from-literal=COMPLIANCE_SERVICE_DB_NAME=cms_service \
+                  --from-literal=COMPLIANCE_SERVICE_DB_USER=postgres \
+                  --from-literal=COMPLIANCE_SERVICE_DB_PASS=postgres123 \
+                  --from-literal=MAPBOX_ACCESS_TOKEN=test \
+                  --from-literal=APP_ENV=development \
+                  --from-literal=APP_NAME=pothys \
+                  --from-literal=APP_VERSION=1.0.0 \
+                  --from-literal=PORT=3002 \
+                  --from-literal=APP_URL=http://localhost:3002 \
+                  --from-literal=NODE_ENV=dev \
+                  --from-literal=JWT_SECRET=mysecret \
+                  --from-literal=JWT_EXPIRATION=7d \
+                  --from-literal=AWS_REGION=${AWS_REGION} \
+                  --from-literal=AWS_S3_BUCKET=pothys-stage-bucket \
+                  --dry-run=client -o yaml | kubectl apply -f -
+                '''
+            }
+        }
+
+        stage('Update Deployment Image') {
+            steps {
+                sh '''
+                sed -i "s|image: .*cms-service.*|image: ${IMAGE_URI}|g" ${K8S_DIR}/deployment.yaml
+                grep "image:" ${K8S_DIR}/deployment.yaml
+                '''
+            }
+        }
+
+        stage('Deploy CMS Service') {
+            steps {
+                sh '''
+                kubectl apply -f ${K8S_DIR}/ -n ${NAMESPACE}
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                kubectl rollout status deployment/cms-service -n ${NAMESPACE} --timeout=180s
+                kubectl get pods -n ${NAMESPACE}
+                kubectl get svc -n ${NAMESPACE}
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'pothys-backend/reports/*.json', allowEmptyArchive: true
+        }
+
+        success {
+            echo "CMS service deployed successfully: ${IMAGE_URI}"
+        }
+
+        unstable {
+            echo "Pipeline completed with security warnings (Snyk)"
+        }
+
+        failure {
+            echo "Deployment failed"
+
+            sh '''
+            kubectl get pods -n staging || true
+            kubectl describe deployment cms-service -n staging || true
+            kubectl logs deployment/cms-service -n staging --tail=100 || true
+            '''
+        }
+    }
+}
