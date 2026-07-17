@@ -1,0 +1,6 @@
+sudo adduser prod_logs
+sudo visudo -f /etc/sudoers.d/prod_logs
+prod_logs ALL=(root) NOPASSWD: /usr/bin/docker logs kut-kaji-backend
+which docker
+sudo docker logs kut-kaji-backend
+sudo /usr/bin/docker logs kut-kaji-backend
